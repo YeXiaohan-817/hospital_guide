@@ -63,3 +63,55 @@ class NavigationTask(Base):
     start_location = relationship("Location", foreign_keys=[start_location_id])
     target_location = relationship("Location", foreign_keys=[target_location_id])
     assigned_robot = relationship("Robot")
+
+Location.outgoing_paths = relationship(
+    "Path", 
+    foreign_keys="[Path.start_id]",
+    back_populates="start_location"
+)
+Location.incoming_paths = relationship(
+    "Path", 
+    foreign_keys="[Path.end_id]",
+    back_populates="end_location"
+)
+
+# 2. 添加新的 Path 模型（智能路径所需）
+class Path(Base):
+    __tablename__ = "paths"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # 使用整数ID与现有Location模型兼容
+    start_id = Column(Integer, ForeignKey("locations.id"), nullable=False)
+    end_id = Column(Integer, ForeignKey("locations.id"), nullable=False)
+    
+    distance = Column(Float, nullable=False)  # 距离（米）
+    
+    # 路径类型：corridor, elevator, stairs, ramp, escalator, door
+    type = Column(String(50), nullable=False, default="corridor")
+    
+    # 路径属性（JSON存储，灵活扩展）
+    attributes = Column(JSON, default={
+        "width": 2.0,                    # 宽度（米）
+        "wheelchair_accessible": True,   # 轮椅是否可通行
+        "slope": 0.0,                    # 坡度（百分比）
+        "crowdedness": 0.0,              # 拥挤度 0-1
+        "is_emergency_route": False,     # 是否为应急通道
+        "average_wait_time": 0,          # 平均等待时间（秒）
+        "lighting": 1.0,                 # 照明情况 0-1
+        "is_bidirectional": True         # 是否双向通行
+    })
+    
+    # 与Location的关联
+    start_location = relationship(
+        "Location", 
+        foreign_keys=[start_id],
+        back_populates="outgoing_paths"
+    )
+    end_location = relationship(
+        "Location", 
+        foreign_keys=[end_id],
+        back_populates="incoming_paths"
+    )
+    
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -7,6 +7,9 @@ from app.database import get_db
 from app.models import Location, Robot
 from app.schemas import LocationResponse, PathResponse
 
+from app.algorithms import create_path_finder
+from app.schemas import PathPlanRequest, PathPlanResponse
+
 router = APIRouter()
 
 @router.get("/locations", response_model=List[LocationResponse])
@@ -141,3 +144,88 @@ def generate_simple_path(start: Location, target: Location) -> List[dict]:
                 "description": f"终点（{target.name}）"
             }
         ]
+    
+@router.post("/plan", response_model=PathPlanResponse)
+async def plan_path(
+    request: PathPlanRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    智能路径规划
+    
+    - **start_id**: 起点位置ID
+    - **end_id**: 终点位置ID  
+    - **user_type**: 用户类型 (wheelchair, emergency, elderly, normal, staff)
+    - **preferences**: 用户偏好列表
+    """
+    try:
+        # 创建路径查找器
+        finder = create_path_finder(db)
+        
+        # 查找路径
+        path_result = finder.find_path(
+            start_id=request.start_id,
+            end_id=request.end_id,
+            user_type=request.user_type,
+            preferences=request.preferences
+        )
+        
+        if not path_result.path_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"未找到从位置{request.start_id}到{request.end_id}的可行路径"
+            )
+        
+        # 获取路径详情
+        path_points = finder.get_path_details(path_result.path_ids)
+        
+        # 生成导航指令
+        instructions = finder.get_navigation_instructions(path_points)
+        
+        return {
+            "success": True,
+            "path": path_points,
+            "total_distance": path_result.total_distance,
+            "estimated_time": path_result.estimated_time,
+            "floor_changes": path_result.floor_changes,
+            "instructions": instructions
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"路径规划失败：{str(e)}"
+        )
+
+# 保持原有的 calculate_path 接口（向后兼容）
+@router.post("/path/calculate", response_model=PathResponse)
+async def calculate_path(
+    start_id: int,
+    target_id: int,
+    db: Session = Depends(get_db)
+):
+    """原有的路径计算接口（保持兼容）"""
+    # 调用智能算法，使用默认用户类型
+    finder = create_path_finder(db)
+    path_result = finder.find_path(start_id, target_id, "normal")
+    
+    if not path_result.path_ids:
+        raise HTTPException(status_code=404, detail="未找到路径")
+    
+    # 转换为旧格式
+    path_points = finder.get_path_details(path_result.path_ids)
+    
+    return {
+        "path": [{
+            "x": p["x"],
+            "y": p["y"], 
+            "floor": p["floor"],
+            "type": p["point_type"],
+            "description": p["description"]
+        } for p in path_points],
+        "total_distance": path_result.total_distance,
+        "estimated_time": path_result.estimated_time,
+        "floor_changes": path_result.floor_changes
+    }
