@@ -19,3 +19,8 @@ def get_db():
         yield db
     finally:
         db.close()
+# app/database.py 中添加初始化函数
+def init_database():
+    """初始化数据库表"""
+    Base.metadata.create_all(bind=engine)
+    print("✅ 数据库表创建完成")

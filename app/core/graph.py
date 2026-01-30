@@ -1,53 +1,72 @@
-# 简化版图结构
-from typing import Dict, List
+"""
+图数据结构，用于路径规划
+"""
+
+from typing import Dict, List, Tuple, Optional
 import heapq
 
 class HospitalGraph:
+    """医院地图图结构"""
+    
     def __init__(self):
-        self.graph: Dict[int, List] = {}
+        self.adjacency: Dict[int, List[Tuple[int, float]]] = {}
+        self.locations: Dict[int, Dict] = {}
     
-    def add_edge(self, u: int, v: int, weight: float):
-        if u not in self.graph:
-            self.graph[u] = []
-        self.graph[u].append((v, weight))
+    def add_location(self, location_id: int, location_info: Dict):
+        if location_id not in self.adjacency:
+            self.adjacency[location_id] = []
+        self.locations[location_id] = location_info
     
-    def dijkstra(self, start: int, end: int):
-        if start not in self.graph or end not in self.graph:
+    def add_edge(self, start_id: int, end_id: int, weight: float):
+        if start_id not in self.adjacency:
+            self.adjacency[start_id] = []
+        self.adjacency[start_id].append((end_id, weight))
+    
+    def add_path(self, start_id: int, end_id: int, 
+                 distance: float, path_type: str, attributes: Dict):
+        self.add_edge(start_id, end_id, distance)
+        if attributes.get("is_bidirectional", True):
+            self.add_edge(end_id, start_id, distance)
+    
+    def get_neighbors(self, location_id: int) -> List[Dict]:
+        if location_id not in self.adjacency:
+            return []
+        return [{"to_id": nid, "distance": w, "weight": w} 
+                for nid, w in self.adjacency[location_id]]
+    
+    def dijkstra(self, start_id: int, end_id: int) -> Tuple[List[int], float]:
+        if start_id not in self.adjacency or end_id not in self.adjacency:
             return [], float('inf')
         
-        distances = {node: float('inf') for node in self.graph}
-        previous = {node: None for node in self.graph}
-        distances[start] = 0
-        pq = [(0, start)]
+        distances = {node: float('inf') for node in self.adjacency}
+        previous = {node: None for node in self.adjacency}
+        distances[start_id] = 0
+        pq = [(0, start_id)]
         
         while pq:
             dist, node = heapq.heappop(pq)
             if dist > distances[node]:
                 continue
-            
-            if node == end:
+            if node == end_id:
                 break
             
-            for neighbor, weight in self.graph.get(node, []):
+            for neighbor, weight in self.adjacency.get(node, []):
                 new_dist = dist + weight
                 if new_dist < distances[neighbor]:
                     distances[neighbor] = new_dist
                     previous[neighbor] = node
                     heapq.heappush(pq, (new_dist, neighbor))
         
-        if distances[end] == float('inf'):
+        if distances[end_id] == float('inf'):
             return [], float('inf')
         
-        # 重构路径
         path = []
-        current = end
+        current = end_id
         while current is not None:
             path.append(current)
             current = previous[current]
         
-        return path[::-1], distances[end]
-    
-# 在 HospitalGraph 类定义之后添加：
+        return path[::-1], distances[end_id]
 
 def build_graph_from_db(db_session):
     """从数据库构建图结构"""
@@ -56,7 +75,6 @@ def build_graph_from_db(db_session):
     graph = HospitalGraph()
     
     try:
-        # 添加所有位置节点
         locations = db_session.query(Location).all()
         for loc in locations:
             graph.add_location(loc.id, {
@@ -65,29 +83,22 @@ def build_graph_from_db(db_session):
                 "floor": loc.floor,
                 "x": loc.x,
                 "y": loc.y,
-                "z": loc.floor * 3.0  # 假设每层3米高
+                "z": loc.floor * 3.0
             })
         
-        # 添加所有路径边
         paths = db_session.query(Path).all()
         for path in paths:
-            # 确保路径的两个端点都存在
-            start_exists = any(loc.id == path.start_id for loc in locations)
-            end_exists = any(loc.id == path.end_id for loc in locations)
-            
-            if start_exists and end_exists:
-                graph.add_path(
-                    start_id=path.start_id,
-                    end_id=path.end_id,
-                    distance=path.distance,
-                    path_type=path.type,
-                    attributes=path.attributes
-                )
+            graph.add_path(
+                start_id=path.start_id,
+                end_id=path.end_id,
+                distance=path.distance,
+                path_type=path.type,
+                attributes=path.attributes
+            )
         
         print(f"✅ 图构建完成：{len(locations)}个位置，{len(paths)}条路径")
         return graph
         
     except Exception as e:
         print(f"❌ 图构建失败：{e}")
-        # 返回空图
         return graph

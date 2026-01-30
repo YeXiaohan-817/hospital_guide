@@ -6,13 +6,13 @@ from datetime import datetime
 class LocationResponse(BaseModel):
     id: int
     name: str
-    description: str
+    description: Optional[str] = ""
     type: str
     x: float
     y: float
     floor: int
     is_accessible: bool
-    
+    z: float=0.0
     class Config:
         from_attributes = True
 
@@ -133,3 +133,68 @@ class PathResponse(BaseModel):
     total_distance: float
     estimated_time: int
     floor_changes: int
+# ==================== 导航任务相关模型 ====================
+
+class NavigationRequestCreate(BaseModel):
+    """创建导航任务的请求"""
+    user_id: int
+    location_ids: List[int]  # 要去的地点ID数组
+    user_type: str = "normal"  # wheelchair, normal, elderly, emergency
+    preferences: Dict[str, bool] = {
+        "avoid_crowds": False,
+        "use_elevator": True
+    }
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": 1,
+                "location_ids": [101, 203, 305],
+                "user_type": "wheelchair",
+                "preferences": {
+                    "avoid_crowds": True,
+                    "use_elevator": True
+                }
+            }
+        }
+
+class PathPoint(BaseModel):
+    """路径点坐标"""
+    x: float
+    y: float
+    z: float
+    floor: int
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "floor": 1
+            }
+        }
+
+class NavigationTaskResponse(BaseModel):
+    """导航任务响应"""
+    id: int
+    path_coordinates: List[PathPoint]
+    estimated_duration: int
+    assigned_robot: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": 1001,
+                "path_coordinates": [
+                    {"x": 0, "y": 0, "z": 0, "floor": 1},
+                    {"x": 10, "y": 0, "z": 5, "floor": 1}
+                ],
+                "estimated_duration": 300,
+                "assigned_robot": {
+                    "id": 8,
+                    "name": "导引车08"
+                }
+            }
+        }
+

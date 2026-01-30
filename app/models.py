@@ -115,3 +115,58 @@ class Path(Base):
     )
     
     created_at = Column(DateTime, default=datetime.utcnow)
+# ==================== 导航任务相关模型 ====================
+
+class NavigationRequest(Base):
+    """导航请求（对应POST /api/tasks）"""
+    __tablename__ = "navigation_requests"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_type = Column(String(20), default="normal")  # wheelchair, normal, elderly, emergency
+    
+    # 偏好设置（JSON存储）
+    preferences = Column(JSON, default={
+        "avoid_crowds": False,
+        "use_elevator": True,
+        "avoid_stairs": False,
+        "fastest_route": True
+    })
+    
+    # 状态
+    status = Column(String(20), default="pending")  # pending, processing, completed, failed
+    assigned_robot_id = Column(Integer, ForeignKey("robots.id"), nullable=True)
+    
+    # 路径结果
+    path_coordinates = Column(JSON, nullable=True)  # 存储路径坐标点
+    total_distance = Column(Float, nullable=True)   # 总距离（米）
+    estimated_duration = Column(Integer, nullable=True)  # 预计时间（秒）
+    
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    
+    # 关系
+    user = relationship("User")
+    assigned_robot = relationship("Robot")
+    
+    def to_dict(self):
+        """转换为字典，用于API响应"""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "user_type": self.user_type,
+            "preferences": self.preferences,
+            "status": self.status,
+            "assigned_robot": {
+                "id": self.assigned_robot_id,
+                "name": self.assigned_robot.name if self.assigned_robot else None
+            } if self.assigned_robot_id else None,
+            "path_coordinates": self.path_coordinates,
+            "total_distance": self.total_distance,
+            "estimated_duration": self.estimated_duration,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None
+        }

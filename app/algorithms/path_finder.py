@@ -150,11 +150,11 @@ class PathFinder:
             
             # 遍历邻居
             for edge in self.graph.get_neighbors(current_id):
-                if edge.to_id in visited:
+                if edge.get("to_id") in visited:
                     continue
                 
                 # 获取路径详情
-                path_obj = self._get_path_between(current_id, edge.to_id)
+                path_obj = self._get_path_between(current_id, edge.get("to_id"))
                 if not path_obj:
                     continue
                 
@@ -166,22 +166,22 @@ class PathFinder:
                 tentative_g = current_g + edge_cost
                 
                 # 如果找到更优路径
-                if edge.to_id not in g_score or tentative_g < g_score[edge.to_id]:
-                    g_score[edge.to_id] = tentative_g
+                if edge.get("to_id") not in g_score or tentative_g < g_score[edge.get("to_id")]:
+                    g_score[edge.get("to_id")] = tentative_g
                     
                     # 计算启发式代价
-                    neighbor_loc = self.db.query(Location).filter(Location.id == edge.to_id).first()
+                    neighbor_loc = self.db.query(Location).filter(Location.id == edge.get("to_id")).first()
                     if neighbor_loc:
                         h_cost = self._heuristic(neighbor_loc, end_loc)
                         f_cost = tentative_g + h_cost
                     else:
                         f_cost = tentative_g
                     
-                    f_score[edge.to_id] = f_cost
+                    f_score[edge.get("to_id")] = f_cost
                     
                     # 新路径
-                    new_path = current_path + [edge.to_id]
-                    heapq.heappush(open_set, (f_cost, edge.to_id, tentative_g, new_path))
+                    new_path = current_path + [edge.get("to_id")]
+                    heapq.heappush(open_set, (f_cost, edge.get("to_id"), tentative_g, new_path))
         
         # 未找到路径
         return PathResult([], 0.0, 0, float('inf'), 0)

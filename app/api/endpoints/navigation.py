@@ -6,7 +6,7 @@ import json
 from pydantic import BaseModel  # 新增
 from app.database import get_db
 from app.models import NavigationTask, User, Location, Robot
-from app.schemas import NavigationTaskResponse
+from app.schemas import NavigationTaskResponse,NavigationRequestCreate, PathPoint
 from app.api.endpoints.map import calculate_distance, generate_simple_path
 class NavigationCreateRequest(BaseModel):
     user_id: int
@@ -27,18 +27,11 @@ TASK_STATUS = {
 
 @router.post("/tasks", response_model=NavigationTaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_navigation_task(
-    request: NavigationCreateRequest,
+    request: NavigationRequestCreate,  # 改用新的schema
     db: Session = Depends(get_db)
 ):
     """
-    创建新的导航任务
-    
-    请求示例：
-    {
-        "user_id": 1,
-        "location_ids": [1, 3, 5],  # 要去的位置ID列表
-        "priority": "normal"        # 优先级：high, normal, low
-    }
+    创建新的导航任务 - 支持用户类型和偏好
     """
     try:
         # 1. 验证用户是否存在
@@ -60,64 +53,62 @@ async def create_navigation_task(
                 )
             locations.append(location)
         
-        if len(locations) < 1:
+        if len(locations) < 2:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="至少需要指定一个目标位置"
+                detail="至少需要指定两个目标位置"
             )
         
-        # 3. 获取用户当前位置（假设为起点）
-        # 这里简化处理：使用第一个位置作为起点
-        # 实际项目中可以从用户定位或登记处获取
-        start_location = db.query(Location).filter(Location.id == 1).first()  # 假设从医院大门开始
-        if not start_location:
-            start_location = locations[0]  # 如果没有大门，用第一个目标作为起点
+        # 3. 使用智能算法计算路径
+        from app.algorithms import create_path_finder
+        finder = create_path_finder(db)
         
-        # 4. 计算最优路径序列（多点优化）
-        optimal_sequence = calculate_optimal_sequence(start_location, locations)
+        # 计算整个路径序列
+        all_path_points = []
+        total_distance = 0
         
-        # 5. 生成详细路径点
-        full_path = []
-        total_distance = 0.0
-        
-        # 生成起点到第一个点
-        for i in range(len(optimal_sequence) - 1):
-            start = optimal_sequence[i]
-            end = optimal_sequence[i + 1]
+        for i in range(len(locations) - 1):
+            path_result = finder.find_path(
+                start_id=locations[i].id,
+                end_id=locations[i+1].id,
+                user_type=request.user_type,
+                preferences=list(request.preferences.keys()) if request.preferences else []
+            )
             
-            # 计算这段路径
-            segment_distance = calculate_distance(start, end)
-            segment_path = generate_simple_path(start, end)
+            if not path_result.path_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"无法从位置{locations[i].id}到{locations[i+1].id}规划路径"
+                )
             
-            total_distance += segment_distance
+            segment_points = finder.get_path_details(path_result.path_ids)
+            total_distance += path_result.total_distance
             
-            # 如果是第一段，包含起点信息
+            # 拼接路径点（去重）
             if i == 0:
-                full_path.extend(segment_path)
+                all_path_points.extend(segment_points)
             else:
-                # 后续段去掉重复的起点
-                full_path.extend(segment_path[1:])
+                all_path_points.extend(segment_points[1:])
         
-        # 6. 分配导引小车
-        assigned_robot = assign_available_robot(start_location.id, db)
+        # 4. 分配导引小车
+        assigned_robot = assign_available_robot(locations[0].id, db)
         
-        # 7. 估算总时间
-        estimated_time = estimate_total_time(total_distance, optimal_sequence)
+        # 5. 估算总时间
+        estimated_time = estimate_total_time(total_distance, locations, request.user_type)
         
-        # 8. 创建导航任务记录
+        # 6. 创建导航任务记录
         task = NavigationTask(
             user_id=request.user_id,
-            start_location_id=start_location.id,
-            target_location_id=optimal_sequence[-1].id,  # 最后一个位置
+            start_location_id=locations[0].id,
+            target_location_id=locations[-1].id,
             assigned_robot_id=assigned_robot.id if assigned_robot else None,
             status=TASK_STATUS["PENDING"],
-            path_coordinates=json.dumps(full_path),  # 存储为JSON字符串
+            path_coordinates=json.dumps(all_path_points),  # 存储为JSON字符串
             estimated_duration=estimated_time,
-            created_at=datetime.utcnow(),
-            #priority=request.priority or "normal"
+            created_at=datetime.utcnow()
         )
         
-        # 9. 如果有分配小车，更新小车状态
+        # 7. 如果有分配小车，更新小车状态
         if assigned_robot:
             assigned_robot.status = "busy"
             assigned_robot.current_task_id = task.id
@@ -126,8 +117,8 @@ async def create_navigation_task(
         db.commit()
         db.refresh(task)
         
-        # 10. 返回创建的任务信息
-        return format_task_response(task, full_path, assigned_robot)
+        # 8. 返回创建的任务信息
+        return format_task_response(task, all_path_points, assigned_robot)
         
     except HTTPException:
         raise
@@ -137,7 +128,6 @@ async def create_navigation_task(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"创建任务失败: {str(e)}"
         )
-
 @router.get("/tasks/{task_id}", response_model=NavigationTaskResponse)
 async def get_navigation_task(
     task_id: int,
@@ -286,12 +276,22 @@ def assign_available_robot(near_location_id: int, db: Session) -> Optional[Robot
     
     return robot
 
-def estimate_total_time(total_distance: float, sequence: List[Location]) -> int:
+def estimate_total_time(total_distance: float, sequence: List[Location], user_type: str = "normal") -> int:
     """
-    估算总导航时间（秒）
+    估算总导航时间（秒） - 支持不同用户类型
     """
-    # 基础行走时间（老年人速度：0.8单位/秒）
-    walking_time = total_distance / 0.8
+    # 根据不同用户类型设置速度（米/秒）
+    speeds = {
+        "wheelchair": 0.6,
+        "elderly": 0.8,
+        "normal": 1.0,
+        "emergency": 1.5,
+        "staff": 1.2
+    }
+    speed = speeds.get(user_type, 1.0)
+    
+    # 基础行走时间
+    walking_time = total_distance / speed
     
     # 楼层转换时间（每层+15秒）
     floor_change_time = 0
