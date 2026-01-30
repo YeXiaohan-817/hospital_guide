@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from app.api.endpoints import health  # 导入我们即将编写的健康检查路由
 from app.api.endpoints import auth,health, map, robots 
-from app.api.endpoints import navigation
+from app.api.endpoints import navigation,speech
 
 # 创建FastAPI应用实例
 app = FastAPI(
@@ -16,7 +16,7 @@ app.include_router(auth.router, prefix="/api/v1", tags=["用户认证"])
 app.include_router(map.router, prefix="/api/v1", tags=["地图导航"])  # 新增
 app.include_router(robots.router, prefix="/api/v1", tags=["导引小车"])  # 新增
 app.include_router(navigation.router, prefix="/api/v1/navigation", tags=["导航任务"])  # 新增
-
+app.include_router(speech.router, prefix="/api/v1/speech", tags=["语音服务"])
 # 一个最简单的根路径路由，用于快速验证服务是否存活
 @app.get("/")
 async def root():
