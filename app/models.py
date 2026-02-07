@@ -12,8 +12,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True)  # 用户名，必须唯一
     hashed_password = Column(String(255))  # 存放加密后的密码
-    #created_at = Column(DateTime, default=datetime.utcnow)  # 可以添加这个字段
-
+    user_type = Column(String(20), default="normal")
+    created_at = Column(DateTime, default=datetime.utcnow)  # 可以添加这个字段
+    
 
 class Location(Base):
     __tablename__ = "locations"
@@ -24,9 +25,13 @@ class Location(Base):
     type = Column(String(50))  # department, facility, entrance, special
     x = Column(Float)
     y = Column(Float)
+    z = Column(Float, default=0.0)  
     floor = Column(Integer)
     is_accessible = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    from_paths = relationship("Path", foreign_keys="Path.start_id", back_populates="start_location")
+    to_paths = relationship("Path", foreign_keys="Path.end_id", back_populates="end_location")
 
 class Robot(Base):
     __tablename__ = "robots"
@@ -106,15 +111,16 @@ class Path(Base):
     start_location = relationship(
         "Location", 
         foreign_keys=[start_id],
-        back_populates="outgoing_paths"
+        back_populates="from_paths"
     )
     end_location = relationship(
         "Location", 
         foreign_keys=[end_id],
-        back_populates="incoming_paths"
+        back_populates="to_paths"
     )
     
     created_at = Column(DateTime, default=datetime.utcnow)
+    
 # ==================== 导航任务相关模型 ====================
 
 class NavigationRequest(Base):

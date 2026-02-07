@@ -12,7 +12,7 @@ class LocationResponse(BaseModel):
     y: float
     floor: int
     is_accessible: bool
-    z: float=0.0
+    z: float
     class Config:
         from_attributes = True
 

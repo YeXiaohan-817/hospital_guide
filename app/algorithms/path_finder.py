@@ -259,7 +259,7 @@ class PathFinder:
                     "type": location.type,
                     "x": location.x,
                     "y": location.y,
-                    "z": location.floor * 3.0,  # 假设每层3米高
+                    "z": location.z,  
                     "floor": location.floor,
                     "point_type": point_type,
                     "description": self._get_point_description(i, len(path_ids), location)
