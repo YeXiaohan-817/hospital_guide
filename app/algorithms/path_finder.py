@@ -251,18 +251,33 @@ class PathFinder:
         for i, loc_id in enumerate(path_ids):
             location = self.db.query(Location).filter(Location.id == loc_id).first()
             if location:
-                point_type = "start" if i == 0 else "end" if i == len(path_ids)-1 else "waypoint"
+                # 确定点类型
+                if i == 0:
+                    point_type = "start"
+                    description = f"从{location.name}出发"
+                elif i == len(path_ids)-1:
+                    point_type = "end"
+                    description = f"到达{location.name}"
+                else:
+                    # 检查是否是楼层转换点
+                    prev_loc = self.db.query(Location).filter(Location.id == path_ids[i-1]).first()
+                    if prev_loc and prev_loc.floor != location.floor:
+                        # 上楼或下楼
+                        if location.floor > prev_loc.floor:
+                            description = f"前往{location.floor}楼"
+                        else:
+                            description = f"下楼到{location.floor}楼"
+                        point_type = "transfer"
+                    else:
+                        point_type = "waypoint"
+                        description = f"经过{location.name}"
                 
                 details.append({
-                    "id": location.id,
-                    "name": location.name,
-                    "type": location.type,
                     "x": location.x,
                     "y": location.y,
-                    "z": location.z,  
                     "floor": location.floor,
-                    "point_type": point_type,
-                    "description": self._get_point_description(i, len(path_ids), location)
+                    "type": point_type,
+                    "description": description
                 })
         
         return details

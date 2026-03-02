@@ -62,19 +62,23 @@ class Config:
     from_attributes = True
 
 class PathPoint(BaseModel):
-    """路径点"""
-    id: int
-    name: str
-    type: str
+    """路径点 - 适配前端需求"""
     x: float
     y: float
-    z: float
     floor: int
-    point_type: str  # start, end, waypoint
+    type: str  # start/end/transfer/waypoint
     description: str
     
     class Config:
-        from_attributes = True
+        json_schema_extra = {
+            "example": {
+                "x": 120,
+                "y": 100,
+                "floor": 1,
+                "type": "start",
+                "description": "从门诊挂号收费出发"
+            }
+        }
 
 class PathPlanRequest(BaseModel):
     """路径规划请求"""
@@ -94,6 +98,33 @@ class PathPlanRequest(BaseModel):
         }
 
 class PathPlanResponse(BaseModel):
+    """路径规划响应 - 适配前端需求"""
+    success: bool
+    path: List[PathPoint]  # 改为Dict类型，不使用PathPoint模型
+    total_distance: float
+    estimated_time: int
+    floor_changes: int
+    instructions: List[str]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "path": [
+                    {
+                        "x": 120,
+                        "y": 100,
+                        "floor": 1,
+                        "type": "start",
+                        "description": "从门诊挂号收费出发"
+                    }
+                ],
+                "total_distance": 45.6,
+                "estimated_time": 320,
+                "floor_changes": 1,
+                "instructions": ["从门诊大厅出发", "直行到达电梯"]
+            }
+        }
     """路径规划响应"""
     success: bool
     path: List[PathPoint]
