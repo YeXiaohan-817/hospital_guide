@@ -29,7 +29,7 @@ class PathFinder:
     def __init__(self, db_session: Session):
         self.db = db_session
         self.graph = None
-        
+        print("🔥 PathFinder 初始化，准备构建图")
     def initialize_graph(self):
         """初始化图结构（懒加载）"""
         if self.graph is None:
@@ -245,42 +245,78 @@ class PathFinder:
         )
     
     def get_path_details(self, path_ids: List[int]) -> List[Dict]:
-        """获取路径的详细坐标点"""
         details = []
         
+        if not path_ids:
+            return details
+        
+        last_loc = self.db.query(Location).filter(Location.id == path_ids[-1]).first()
+        target_floor = last_loc.floor if last_loc else 0
+        transfer_added = False
+        
         for i, loc_id in enumerate(path_ids):
+            
             location = self.db.query(Location).filter(Location.id == loc_id).first()
-            if location:
-                # 确定点类型
-                if i == 0:
-                    point_type = "start"
-                    description = f"从{location.name}出发"
-                elif i == len(path_ids)-1:
-                    point_type = "end"
-                    description = f"到达{location.name}"
-                else:
-                    # 检查是否是楼层转换点
-                    prev_loc = self.db.query(Location).filter(Location.id == path_ids[i-1]).first()
-                    if prev_loc and prev_loc.floor != location.floor:
-                        # 上楼或下楼
-                        if location.floor > prev_loc.floor:
-                            description = f"前往{location.floor}楼"
-                        else:
-                            description = f"下楼到{location.floor}楼"
-                        point_type = "transfer"
-                    else:
-                        point_type = "waypoint"
-                        description = f"经过{location.name}"
+            if not location:
+                continue
                 
+            if i == 0:
                 details.append({
                     "x": location.x,
                     "y": location.y,
                     "floor": location.floor,
-                    "type": point_type,
-                    "description": description
+                    "type": "start",
+                    "description": f"从{getattr(location, 'name', '未知')}出发"
                 })
+            elif i == len(path_ids) - 1:
+                details.append({
+                    "x": location.x,
+                    "y": location.y,
+                    "floor": location.floor,
+                    "type": "end",
+                    "description": f"到达{getattr(location, 'name', '未知')}"
+                })
+            else:
+                prev_loc = self.db.query(Location).filter(Location.id == path_ids[i-1]).first()
+                if prev_loc and prev_loc.floor != location.floor:
+                    if location.type in ["elevator", "stairs"] and not transfer_added:
+                        details.append({
+                            "x": prev_loc.x,
+                            "y": prev_loc.y,
+                            "floor": prev_loc.floor,
+                            "type": "transfer",
+                            "description": f"乘坐{location.type}到{target_floor}楼"
+                        })
+                        transfer_added = True
+                    elif location.type not in ["elevator", "stairs"] and location.floor == target_floor:
+                        details.append({
+                            "x": location.x,
+                            "y": location.y,
+                            "floor": location.floor,
+                            "type": "transfer",
+                            "description": f"到达{location.floor}楼"
+                        })
+                        details.append({
+                            "x": location.x,
+                            "y": location.y,
+                            "floor": location.floor,
+                            "type": "waypoint",
+                            "description": f"经过{getattr(location, 'name', '未知')}"
+                        })
+                elif location.type not in ["elevator", "stairs"]:
+                    last_point = details[-1] if details else None
+                    if not last_point or last_point.get("description") != f"经过{location.name}":
+                        details.append({
+                            "x": location.x,
+                            "y": location.y,
+                            "floor": location.floor,
+                            "type": "waypoint",
+                            "description": f"经过{location.name}"
+                        })
         
+          
         return details
+            
     
     def _get_point_description(self, index: int, total: int, location: Location) -> str:
         """生成路径点描述"""

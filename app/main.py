@@ -9,6 +9,18 @@ app = FastAPI(
     description="为APP和硬件小车提供服务的后端系统",
     version="0.1.0"
 )
+from fastapi.middleware.cors import CORSMiddleware
+
+# 允许的前端地址
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 将健康检查路由包含到应用中，并为其指定前缀和标签
 app.include_router(health.router, prefix="/api/v1", tags=["健康检查"])

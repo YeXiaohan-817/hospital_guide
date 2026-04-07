@@ -5,79 +5,86 @@
 
 import sys
 import os
+import math
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.database import SessionLocal
 from app.models import Location, Path
+
+def calculate_distance(x1, y1, x2, y2):
+    """计算两点距离"""
+    return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
 def add_missing_paths(db):
     """添加缺失的路径连接"""
     
     # 获取所有地点
     locations = db.query(Location).all()
-    loc_map = {loc.id: loc for loc in locations}
+    print(f"共有 {len(locations)} 个地点")
     
-    print("正在添加缺失路径...")
+    # 按楼层分组
+    floors = {}
+    for loc in locations:
+        if loc.floor not in floors:
+            floors[loc.floor] = []
+        floors[loc.floor].append(loc)
+    
     paths_added = 0
     
-    # 1. 每个楼层的厕所连接到该楼层的电梯和楼梯
-    for floor in range(1, 5):
-        # 找到该楼层的厕所
-        toilets = [loc for loc in locations if loc.floor == floor and loc.type == "restroom"]
-        # 找到该楼层的电梯
-        elevators = [loc for loc in locations if loc.floor == floor and loc.type == "elevator"]
-        # 找到该楼层的楼梯
-        stairs = [loc for loc in locations if loc.floor == floor and loc.type == "stairs"]
+    # 1. 同层连接：每个楼层内的所有点互相连接（如果距离合适）
+    for floor, locs in floors.items():
+        print(f"\n处理 {floor}楼，共 {len(locs)} 个地点")
         
-        for toilet in toilets:
-            # 连接到电梯
-            for elevator in elevators:
-                # 计算距离（估算）
-                distance = 5.0  # 假设距离5米
+        for i in range(len(locs)):
+            for j in range(i+1, len(locs)):
+                loc1 = locs[i]
+                loc2 = locs[j]
                 
-                # 检查是否已存在路径
-                existing = db.query(Path).filter(
-                    ((Path.start_id == toilet.id) & (Path.end_id == elevator.id)) |
-                    ((Path.start_id == elevator.id) & (Path.end_id == toilet.id))
-                ).first()
+                # 计算距离
+                distance = calculate_distance(loc1.x, loc1.y, loc2.x, loc2.y)
                 
-                if not existing:
-                    # 添加双向路径
-                    db.add(Path(start_id=toilet.id, end_id=elevator.id, distance=distance, type="corridor"))
-                    db.add(Path(start_id=elevator.id, end_id=toilet.id, distance=distance, type="corridor"))
-                    paths_added += 2
-                    print(f"  添加: 厕所_{floor}F ↔ 电梯_{floor}F")
-            
-            # 连接到楼梯（每个厕所连到最近的楼梯）
-            if stairs:
-                # 找最近的楼梯（简单起见连第一个）
-                stair = stairs[0]
-                distance = 6.0
-                
-                existing = db.query(Path).filter(
-                    ((Path.start_id == toilet.id) & (Path.end_id == stair.id)) |
-                    ((Path.start_id == stair.id) & (Path.end_id == toilet.id))
-                ).first()
-                
-                if not existing:
-                    db.add(Path(start_id=toilet.id, end_id=stair.id, distance=distance, type="corridor"))
-                    db.add(Path(start_id=stair.id, end_id=toilet.id, distance=distance, type="corridor"))
-                    paths_added += 2
-                    print(f"  添加: 厕所_{floor}F ↔ 楼梯_{floor}F")
+                # 只连接距离小于15米的点（避免连得太远）
+                if distance < 15:
+                    # 检查是否已存在路径
+                    existing = db.query(Path).filter(
+                        ((Path.start_id == loc1.id) & (Path.end_id == loc2.id)) |
+                        ((Path.start_id == loc2.id) & (Path.end_id == loc1.id))
+                    ).first()
+                    
+                    if not existing:
+                        # 添加双向路径
+                        db.add(Path(start_id=loc1.id, end_id=loc2.id, distance=round(distance, 2), type="corridor"))
+                        db.add(Path(start_id=loc2.id, end_id=loc1.id, distance=round(distance, 2), type="corridor"))
+                        paths_added += 2
+                        print(f"  添加: {loc1.name} ↔ {loc2.name} ({distance:.2f}m)")
+        
+        db.commit()
     
-    # 2. 确保同层所有楼梯和电梯互相连接（形成网络）
-    for floor in range(1, 5):
-        floor_locs = [loc for loc in locations if loc.floor == floor]
-        elev_stairs = [loc for loc in floor_locs if loc.type in ["elevator", "stairs"]]
+    # 2. 垂直连接：确保所有楼梯/电梯跨楼层连接
+    print("\n处理垂直连接...")
+    
+    # 获取所有楼梯和电梯
+    vertical_locs = [loc for loc in locations if loc.type in ["stairs", "elevator"]]
+    
+    # 按类型和位置分组
+    for loc_type in ["stairs", "elevator"]:
+        type_locs = [loc for loc in vertical_locs if loc.type == loc_type]
         
-        # 两两连接
-        for i in range(len(elev_stairs)):
-            for j in range(i+1, len(elev_stairs)):
-                loc1 = elev_stairs[i]
-                loc2 = elev_stairs[j]
-                
-                # 估算距离
-                distance = 8.0
+        # 按大致位置分组（同一部楼梯/电梯）
+        groups = {}
+        for loc in type_locs:
+            # 用坐标的整数部分分组
+            key = f"{round(loc.x)}_{round(loc.y)}"
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(loc)
+        
+        # 每组内连接所有楼层
+        for key, group in groups.items():
+            group.sort(key=lambda x: x.floor)
+            for i in range(len(group)-1):
+                loc1 = group[i]
+                loc2 = group[i+1]
                 
                 existing = db.query(Path).filter(
                     ((Path.start_id == loc1.id) & (Path.end_id == loc2.id)) |
@@ -85,59 +92,18 @@ def add_missing_paths(db):
                 ).first()
                 
                 if not existing:
-                    db.add(Path(start_id=loc1.id, end_id=loc2.id, distance=distance, type="corridor"))
-                    db.add(Path(start_id=loc2.id, end_id=loc1.id, distance=distance, type="corridor"))
+                    distance = 3.0  # 层高
+                    db.add(Path(start_id=loc1.id, end_id=loc2.id, distance=distance, type=loc_type))
+                    db.add(Path(start_id=loc2.id, end_id=loc1.id, distance=distance, type=loc_type))
                     paths_added += 2
                     print(f"  添加: {loc1.name} ↔ {loc2.name}")
     
-    # 3. 确保垂直连接完整（电梯连电梯，楼梯连楼梯）
-    # 电梯连接
-    elevators_1f = [loc for loc in locations if loc.floor == 1 and loc.type == "elevator"]
-    elevators_2f = [loc for loc in locations if loc.floor == 2 and loc.type == "elevator"]
-    elevators_3f = [loc for loc in locations if loc.floor == 3 and loc.type == "elevator"]
-    elevators_4f = [loc for loc in locations if loc.floor == 4 and loc.type == "elevator"]
-    
-    # 连接1-2楼电梯
-    for e1 in elevators_1f:
-        for e2 in elevators_2f:
-            existing = db.query(Path).filter(
-                ((Path.start_id == e1.id) & (Path.end_id == e2.id)) |
-                ((Path.start_id == e2.id) & (Path.end_id == e1.id))
-            ).first()
-            if not existing:
-                db.add(Path(start_id=e1.id, end_id=e2.id, distance=3.0, type="elevator"))
-                db.add(Path(start_id=e2.id, end_id=e1.id, distance=3.0, type="elevator"))
-                paths_added += 2
-                print(f"  添加: 电梯_1F ↔ 电梯_2F")
-    
-    # 连接2-3楼电梯
-    for e2 in elevators_2f:
-        for e3 in elevators_3f:
-            existing = db.query(Path).filter(
-                ((Path.start_id == e2.id) & (Path.end_id == e3.id)) |
-                ((Path.start_id == e3.id) & (Path.end_id == e2.id))
-            ).first()
-            if not existing:
-                db.add(Path(start_id=e2.id, end_id=e3.id, distance=3.0, type="elevator"))
-                db.add(Path(start_id=e3.id, end_id=e2.id, distance=3.0, type="elevator"))
-                paths_added += 2
-                print(f"  添加: 电梯_2F ↔ 电梯_3F")
-    
-    # 连接3-4楼电梯
-    for e3 in elevators_3f:
-        for e4 in elevators_4f:
-            existing = db.query(Path).filter(
-                ((Path.start_id == e3.id) & (Path.end_id == e4.id)) |
-                ((Path.start_id == e4.id) & (Path.end_id == e3.id))
-            ).first()
-            if not existing:
-                db.add(Path(start_id=e3.id, end_id=e4.id, distance=3.0, type="elevator"))
-                db.add(Path(start_id=e4.id, end_id=e3.id, distance=3.0, type="elevator"))
-                paths_added += 2
-                print(f"  添加: 电梯_3F ↔ 电梯_4F")
-    
     db.commit()
     print(f"\n✅ 成功添加 {paths_added} 条路径")
+    
+    # 统计
+    total_paths = db.query(Path).count()
+    print(f"当前总路径数: {total_paths}")
 
 if __name__ == "__main__":
     db = SessionLocal()

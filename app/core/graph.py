@@ -25,6 +25,8 @@ class HospitalGraph:
     def add_path(self, start_id: int, end_id: int, 
                  distance: float, path_type: str, attributes: Dict):
         self.add_edge(start_id, end_id, distance)
+        if attributes is None:
+           attributes = {}
         if attributes.get("is_bidirectional", True):
             self.add_edge(end_id, start_id, distance)
     
@@ -87,7 +89,9 @@ def build_graph_from_db(db_session):
             })
         
         paths = db_session.query(Path).all()
+        
         for path in paths:
+            
             graph.add_path(
                 start_id=path.start_id,
                 end_id=path.end_id,
