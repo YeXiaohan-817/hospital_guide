@@ -29,7 +29,7 @@ class PathFinder:
     def __init__(self, db_session: Session):
         self.db = db_session
         self.graph = None
-        print("🔥 PathFinder 初始化，准备构建图")
+        
     def initialize_graph(self):
         """初始化图结构（懒加载）"""
         if self.graph is None:
@@ -245,41 +245,51 @@ class PathFinder:
         )
     
     def get_path_details(self, path_ids: List[int]) -> List[Dict]:
+    
         details = []
         
-        if not path_ids:
-            return details
-        
+        # 获取最后一个点的信息（目标楼层）
         last_loc = self.db.query(Location).filter(Location.id == path_ids[-1]).first()
         target_floor = last_loc.floor if last_loc else 0
+        
+        # 标记是否已经处理了电梯转换
+        elevator_handled = False
         transfer_added = False
         
         for i, loc_id in enumerate(path_ids):
-            
             location = self.db.query(Location).filter(Location.id == loc_id).first()
             if not location:
                 continue
                 
+            # 起点
             if i == 0:
                 details.append({
                     "x": location.x,
                     "y": location.y,
                     "floor": location.floor,
                     "type": "start",
-                    "description": f"从{getattr(location, 'name', '未知')}出发"
+                    "description": f"从{location.name}出发"
                 })
+            
+            # 终点
             elif i == len(path_ids) - 1:
                 details.append({
                     "x": location.x,
                     "y": location.y,
                     "floor": location.floor,
                     "type": "end",
-                    "description": f"到达{getattr(location, 'name', '未知')}"
+                    "description": f"到达{location.name}"
                 })
+            
+            # 中间点
             else:
                 prev_loc = self.db.query(Location).filter(Location.id == path_ids[i-1]).first()
+                
+                # 如果是楼层转换
                 if prev_loc and prev_loc.floor != location.floor:
+                    # 如果是电梯/楼梯点，且还没添加转换提示
                     if location.type in ["elevator", "stairs"] and not transfer_added:
+                        # 添加转换提示（在起点楼层）
                         details.append({
                             "x": prev_loc.x,
                             "y": prev_loc.y,
@@ -288,7 +298,10 @@ class PathFinder:
                             "description": f"乘坐{location.type}到{target_floor}楼"
                         })
                         transfer_added = True
+                    
+                    # 到达目标楼层后的第一个非电梯点
                     elif location.type not in ["elevator", "stairs"] and location.floor == target_floor:
+                        # 先添加到达楼层提示
                         details.append({
                             "x": location.x,
                             "y": location.y,
@@ -296,14 +309,18 @@ class PathFinder:
                             "type": "transfer",
                             "description": f"到达{location.floor}楼"
                         })
+                        # 再添加这个点本身
                         details.append({
                             "x": location.x,
                             "y": location.y,
                             "floor": location.floor,
                             "type": "waypoint",
-                            "description": f"经过{getattr(location, 'name', '未知')}"
+                            "description": f"经过{location.name}"
                         })
+                
+                # 同层移动（且不是电梯/楼梯）
                 elif location.type not in ["elevator", "stairs"]:
+                    # 避免重复添加到达楼层后的第一个点
                     last_point = details[-1] if details else None
                     if not last_point or last_point.get("description") != f"经过{location.name}":
                         details.append({
@@ -314,9 +331,8 @@ class PathFinder:
                             "description": f"经过{location.name}"
                         })
         
-          
         return details
-            
+        
     
     def _get_point_description(self, index: int, total: int, location: Location) -> str:
         """生成路径点描述"""

@@ -25,3 +25,12 @@ PATH_TYPE_COSTS = {
     "ramp": 1.1,
     "escalator": 1.0
 }
+# ============ 大模型配置（DeepSeek） ============
+import os
+from dotenv import load_dotenv
+load_dotenv()  # 加载项目根目录的 .env
+LLM_CONFIG = {
+    "base_url": "https://api.deepseek.com/chat/completions",
+    "api_key": os.getenv("DEEPSEEK_API_KEY", ""),
+    "model": "deepseek-chat"
+}
