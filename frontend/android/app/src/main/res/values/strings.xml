@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Hospital Guide</string>
-    <string name="title_activity_main">Hospital Guide</string>
+    <string name="app_name">医路通</string>
+    <string name="title_activity_main">医路通</string>
     <string name="package_name">com.hospitalguide.app</string>
     <string name="custom_url_scheme">com.hospitalguide.app</string>
 </resources>

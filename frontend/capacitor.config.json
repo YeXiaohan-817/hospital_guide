@@ -1,6 +1,6 @@
 {
   "appId": "com.hospitalguide.app",
-  "appName": "Hospital Guide",
+  "appName": "医路通",
   "webDir": "dist",
   "server": {
     "androidScheme": "http"
