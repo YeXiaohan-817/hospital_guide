@@ -3,15 +3,10 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 import json
-from pydantic import BaseModel  # 新增
 from app.database import get_db
 from app.models import NavigationTask, User, Location, Robot
 from app.schemas import NavigationTaskResponse,NavigationRequestCreate, PathPoint
 from app.api.endpoints.map import calculate_distance
-class NavigationCreateRequest(BaseModel):
-    user_id: int
-    location_ids: List[int]
-    priority: Optional[str] = "normal"
 
 router = APIRouter()
 

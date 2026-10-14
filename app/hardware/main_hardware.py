@@ -56,11 +56,16 @@ class NavigationHardware:
                 
                 # 5. 获取导航路径
                 print("🗺️ 规划路径...")
-                # 这里需要从intent中提取目的地ID，简化处理
+                # 从意图结果中提取目的地编号与用户类型
+                dest_id = intent.get("destination_id")
+                user_type = intent.get("user_type", "normal")
+                if not dest_id:
+                    self.tts.play_text("抱歉，无法识别目的地")
+                    continue
                 path_data = self.api_client.get_navigation_path(
-                    start_id=1,  # 默认起点
-                    end_id=3,    # 从intent中解析
-                    user_type="normal"
+                    start_id=1,  # 默认起点（后续可由定位模块提供）
+                    end_id=dest_id,
+                    user_type=user_type
                 )
                 
                 # 6. 语音播报

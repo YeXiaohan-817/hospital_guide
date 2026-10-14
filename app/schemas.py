@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 
 # 位置响应模型
 class LocationResponse(BaseModel):
@@ -16,11 +15,13 @@ class LocationResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# 路径规划响应模型
+# 路径规划响应模型（兼容版，含楼层变化）
 class PathResponse(BaseModel):
+    """原有的路径响应（保持兼容）"""
     path: List[Dict[str, Any]]
     total_distance: float
     estimated_time: int
+    floor_changes: int
 
 # 小车状态响应模型
 class RobotResponse(BaseModel):
@@ -31,62 +32,36 @@ class RobotResponse(BaseModel):
     is_online: bool
     current_location: Optional[LocationResponse] = None
 
-# 导航任务请求模型
-class NavigationRequest(BaseModel):
-    user_id: int
-    start_location_id: int
-    target_location_id: int
-# 2. 多点导航请求（从A到B到C到D...） - 新增的
-class NavigationCreateRequest(BaseModel):
-    user_id: int
-    location_ids: List[int]  # 要访问的位置ID列表
-    priority: Optional[str] = "normal"  # 优先级：high, normal, low
-
-# 导航任务响应模型
-class NavigationTaskResponse(BaseModel):
-    id: int
-    status: str
-    estimated_duration: int
-    path_coordinates: Optional[List[Dict]] = None
-    assigned_robot: Optional[RobotResponse] = None
-class Config:
-        from_attributes = True
-
-# 用户信息响应模型
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    #created_at: Optional[str] = None
-    
-class Config:
-    from_attributes = True
-
+# 路径点 - 适配前端需求（合并坐标与类型/描述字段）
 class PathPoint(BaseModel):
     """路径点 - 适配前端需求"""
     x: float
     y: float
+    z: float = 0.0
     floor: int
-    type: str  # start/end/transfer/waypoint
-    description: str
-    
+    type: Optional[str] = "waypoint"  # corridor/elevator/stairs/start/end 等
+    description: Optional[str] = ""
+
     class Config:
         json_schema_extra = {
             "example": {
                 "x": 120,
                 "y": 100,
+                "z": 0.0,
                 "floor": 1,
                 "type": "start",
                 "description": "从门诊挂号收费出发"
             }
         }
 
+# 路径规划请求
 class PathPlanRequest(BaseModel):
     """路径规划请求"""
     start_id: int
     end_id: int
     user_type: str = "normal"  # wheelchair, emergency, elderly, normal, staff
     preferences: List[str] = []  # avoid_crowds, use_elevator, avoid_stairs, fastest_route
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -97,16 +72,17 @@ class PathPlanRequest(BaseModel):
             }
         }
 
+# 路径规划响应
 class PathPlanResponse(BaseModel):
     """路径规划响应 - 适配前端需求"""
     success: bool
-    path: List[PathPoint]  # 改为Dict类型，不使用PathPoint模型
+    path: List[PathPoint]
     total_distance: float
     estimated_time: int
     floor_changes: int
     instructions: List[str]
     dynamic_assignment: Optional[Dict[str, Any]] = None  # 动态路径分配信息
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -115,40 +91,10 @@ class PathPlanResponse(BaseModel):
                     {
                         "x": 120,
                         "y": 100,
+                        "z": 0.0,
                         "floor": 1,
                         "type": "start",
                         "description": "从门诊挂号收费出发"
-                    }
-                ],
-                "total_distance": 45.6,
-                "estimated_time": 320,
-                "floor_changes": 1,
-                "instructions": ["从门诊大厅出发", "直行到达电梯"]
-            }
-        }
-    """路径规划响应"""
-    success: bool
-    path: List[PathPoint]
-    total_distance: float
-    estimated_time: int
-    floor_changes: int
-    instructions: List[str]
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "success": True,
-                "path": [
-                    {
-                        "id": 1,
-                        "name": "门诊大厅",
-                        "type": "entrance",
-                        "x": 0.0,
-                        "y": 0.0,
-                        "z": 0.0,
-                        "floor": 1,
-                        "point_type": "start",
-                        "description": "起点：门诊大厅"
                     }
                 ],
                 "total_distance": 45.6,
@@ -158,15 +104,7 @@ class PathPlanResponse(BaseModel):
             }
         }
 
-# 保持原有的 PathResponse（用于向后兼容）
-class PathResponse(BaseModel):
-    """原有的路径响应（保持兼容）"""
-    path: List[Dict[str, Any]]
-    total_distance: float
-    estimated_time: int
-    floor_changes: int
-# ==================== 导航任务相关模型 ====================
-
+# 导航任务请求（统一入口）
 class NavigationRequestCreate(BaseModel):
     """创建导航任务的请求"""
     user_id: int
@@ -176,7 +114,7 @@ class NavigationRequestCreate(BaseModel):
         "avoid_crowds": False,
         "use_elevator": True
     }
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -190,34 +128,25 @@ class NavigationRequestCreate(BaseModel):
             }
         }
 
-class PathPoint(BaseModel):
-    """路径点坐标"""
-    x: float
-    y: float
-    z: float
-    floor: int
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "floor": 1
-            }
-        }
-
+# 导航任务响应（合并两版字段，兼容既有调用）
 class NavigationTaskResponse(BaseModel):
     """导航任务响应"""
     id: int
-    path_coordinates: List[PathPoint]
-    estimated_duration: int
+    user_id: Optional[int] = None
+    status: Optional[str] = None
+    estimated_duration: Optional[int] = 0
+    path_coordinates: Optional[List[Dict[str, Any]]] = None
     assigned_robot: Optional[Dict[str, Any]] = None
-    
+    created_at: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
     class Config:
         json_schema_extra = {
             "example": {
                 "id": 1001,
+                "user_id": 1,
+                "status": "pending",
                 "path_coordinates": [
                     {"x": 0, "y": 0, "z": 0, "floor": 1},
                     {"x": 10, "y": 0, "z": 5, "floor": 1}
@@ -230,3 +159,10 @@ class NavigationTaskResponse(BaseModel):
             }
         }
 
+# 用户信息响应模型
+class UserResponse(BaseModel):
+    id: int
+    username: str
+
+    class Config:
+        from_attributes = True

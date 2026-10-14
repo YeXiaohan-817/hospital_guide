@@ -32,9 +32,12 @@ async def recognize_speech(
     # 模拟返回
     return {"text": "我要去放射科"}
 
+class IntentRequest(BaseModel):
+    text: str
+
 @router.post("/understand")
 async def understand_intent(
-    text: str
+    req: IntentRequest
 ):
     """
     意图理解接口
