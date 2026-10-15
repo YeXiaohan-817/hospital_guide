@@ -22,7 +22,7 @@
 | 后端 | Python 3.9+ · FastAPI · SQLAlchemy · SQLite · A* 路径算法 · DeepSeek API |
 | 前端 | React 18 · Vite · Tailwind CSS 4 · Three.js（3D 渲染）· Recharts |
 | 移动端 | Capacitor 8（Android 原生打包，`frontend/android/`） |
-| 数据 | SQLite（`hospital_guide.db`，含 804 个导航节点 / 1986 条路径） |
+| 数据 | SQLite（`hospital_guide.db`，含 182 个导航节点 / 1980 条路径） |
 
 ## 项目结构
 
