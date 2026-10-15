@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CYBER-BOT // 具身智能车载控制中枢</title>
+    <style>
+        :root {
+            --neon-cyan: #00f3ff;
+            --neon-pink: #ff0055;
+            --neon-yellow: #ffe600;
+            --bg-dark: #080a0f;
+            --panel-bg: rgba(16, 20, 31, 0.85);
+        }
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg-dark);
+            color: #fff;
+            font-family: 'Segoe UI', Consolas, monospace;
+            margin: 0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
+            min-height: 100vh;
+            background-image: radial-gradient(circle at 50% 50%, rgba(0, 243, 255, 0.05) 0%, transparent 80%);
+        }
+        h1 {
+            color: var(--neon-cyan);
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            text-shadow: 0 0 12px var(--neon-cyan);
+            margin-bottom: 5px;
+        }
+        .status-bar {
+            display: flex; gap: 15px; margin-bottom: 20px; font-size: 13px;
+        }
+        .badge {
+            padding: 6px 14px; border-radius: 4px;
+            border: 1px solid var(--neon-cyan);
+            box-shadow: 0 0 8px rgba(0,243,255,0.3);
+            background: rgba(0, 243, 255, 0.1);
+        }
+        .badge.target {
+            border-color: var(--neon-pink); color: var(--neon-pink);
+            box-shadow: 0 0 8px rgba(255,0,85,0.3); background: rgba(255, 0, 85, 0.1);
+        }
+        .console-container {
+            width: 100%; max-width: 800px; height: 550px;
+            background: var(--panel-bg);
+            border: 1px solid var(--neon-cyan);
+            box-shadow: 0 0 25px rgba(0,243,255,0.2);
+            border-radius: 8px; display: flex; flex-direction: column;
+            overflow: hidden; backdrop-filter: blur(10px);
+        }
+        .chat-history {
+            flex: 1; padding: 20px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 18px;
+        }
+        
+        /* 消息行与头像样式 */
+        .chat-row {
+            display: flex; align-items: flex-start; gap: 12px; max-width: 85%;
+        }
+        .chat-row.user-row { align-self: flex-end; flex-direction: row-reverse; }
+        .chat-row.bot-row { align-self: flex-start; }
+
+        .avatar {
+            width: 40px; height: 40px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px; flex-shrink: 0; overflow: hidden;
+        }
+        .avatar img {
+            width: 100%; height: 100%; object-fit: cover; display: block;
+        }
+        .user-row .avatar {
+            background: rgba(255, 0, 85, 0.2); border: 1px solid var(--neon-pink);
+            box-shadow: 0 0 8px var(--neon-pink);
+        }
+        .bot-row .avatar {
+            background: rgba(0, 243, 255, 0.2); border: 1px solid var(--neon-cyan);
+            box-shadow: 0 0 8px var(--neon-cyan);
+        }
+
+        .msg-bubble {
+            padding: 12px 16px; border-radius: 8px; line-height: 1.5; font-size: 14px;
+            word-break: break-word;
+        }
+        .user-row .msg-bubble {
+            background: rgba(255, 0, 85, 0.15); border: 1px solid var(--neon-pink); color: #fff;
+        }
+        .bot-row .msg-bubble {
+            background: rgba(0, 243, 255, 0.12); border: 1px solid var(--neon-cyan); color: #e0ffff;
+        }
+
+        /* 思考中动态点阵动画 */
+        .typing-indicator {
+            display: flex; align-items: center; gap: 6px; padding: 12px 16px;
+        }
+        .typing-dot {
+            width: 8px; height: 8px; background: var(--neon-cyan); border-radius: 50%;
+            animation: pulse 1.4s infinite ease-in-out;
+            box-shadow: 0 0 6px var(--neon-cyan);
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes pulse {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+            40% { transform: scale(1.2); opacity: 1; }
+        }
+
+        .input-area {
+            display: flex; align-items: center; padding: 15px; border-top: 1px solid rgba(0,243,255,0.3);
+            background: rgba(0,0,0,0.6);
+        }
+        input[type="text"] {
+            flex: 1; background: transparent; border: 1px solid var(--neon-cyan);
+            color: #fff; padding: 12px 18px; border-radius: 25px; outline: none;
+            font-size: 14px; transition: all 0.3s;
+        }
+        input[type="text"]:focus { box-shadow: 0 0 12px var(--neon-cyan); }
+        input[type="text"]:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* ---------------- 圆形发光/水花交互按钮 ---------------- */
+        .action-btn {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: transparent; border: 2px solid var(--neon-cyan);
+            color: var(--neon-cyan); display: flex; align-items: center; justify-content: center;
+            cursor: pointer; position: relative; overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
+            flex-shrink: 0; margin-left: 12px; padding: 0;
+            outline: none;
+        }
+        .action-btn:hover {
+            background: rgba(0, 243, 255, 0.15);
+            box-shadow: 0 0 18px var(--neon-cyan);
+            transform: scale(1.05);
+        }
+        /* 中断请求模式（红色正方形状态） */
+        .action-btn.stop-mode {
+            border-color: var(--neon-pink); color: var(--neon-pink);
+            box-shadow: 0 0 15px rgba(255, 0, 85, 0.5);
+            animation: pulse-border 1.5s infinite;
+        }
+        .action-btn.stop-mode:hover {
+            background: rgba(255, 0, 85, 0.25);
+            box-shadow: 0 0 22px var(--neon-pink);
+        }
+        @keyframes pulse-border {
+            0%, 100% { box-shadow: 0 0 10px rgba(255, 0, 85, 0.4); }
+            50% { box-shadow: 0 0 20px rgba(255, 0, 85, 0.8); }
+        }
+
+        /* 模拟水花/波纹扩散 CSS */
+        .ripple {
+            position: absolute; border-radius: 50%; transform: scale(0);
+            animation: ripple-anim 0.6s linear;
+            background: rgba(0, 243, 255, 0.5);
+            pointer-events: none;
+        }
+        .action-btn.stop-mode .ripple {
+            background: rgba(255, 0, 85, 0.6);
+        }
+        @keyframes ripple-anim {
+            to { transform: scale(4); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <h1>⚡ CYBER-BOT VLA CONTROL ⚡</h1>
+    <div class="status-bar">
+        <div class="badge">SYSTEM: FASTAPI READY</div>
+        <div class="badge">ROS 2: ACTIVE</div>
+        <div class="badge target" id="currentTarget">LOCKED: STANDBY</div>
+    </div>
+
+    <div class="console-container">
+        <div class="chat-history" id="chatBox">
+            <div class="chat-row bot-row">
+                <div class="avatar">🤖</div>
+                <div class="msg-bubble">🤖 [SYSTEM]: 具身智能大脑已接入。您可以随时与我交流，或下发导航指令（例如：“我想找地方坐”、“帮我找包包”）。</div>
+            </div>
+        </div>
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="输入自然语言指令..." onkeydown="if(event.key==='Enter') handleAction(event)">
+            <!-- 动态切换形态的圆环按钮 -->
+            <button id="actionBtn" class="action-btn" title="发送指令" onclick="handleAction(event)">
+                <!-- 初始朝上箭头 SVG -->
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="19" x2="12" y2="5"></line>
+                    <polyline points="5 12 12 5 19 12"></polyline>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://' + window.location.hostname + ':8000/api/chat';
+        let abortController = null; // 全局请求控制器
+
+        // 统一入口：响应点击与 Enter 键
+        function handleAction(e) {
+            triggerWaterRipple(e); // 触发水花特效
+
+            // 如果当前已有正在进行的 API 请求 -> 执行中断
+            if (abortController) {
+                abortController.abort();
+                return;
+            }
+
+            // 否则发送新消息
+            sendMsg();
+        }
+
+        // 产生水花波纹扩散效果
+        function triggerWaterRipple(e) {
+            const btn = document.getElementById('actionBtn');
+            const rect = btn.getBoundingClientRect();
+            const circle = document.createElement('span');
+            const diameter = Math.max(rect.width, rect.height);
+            const radius = diameter / 2;
+
+            // 定位点击或者按钮中心位置
+            const clickX = e.clientX ? (e.clientX - rect.left) : radius;
+            const clickY = e.clientY ? (e.clientY - rect.top) : radius;
+
+            circle.style.width = circle.style.height = `${diameter}px`;
+            circle.style.left = `${clickX - radius}px`;
+            circle.style.top = `${clickY - radius}px`;
+            circle.classList.add('ripple');
+
+            // 移除已有波纹
+            const existingRipple = btn.getElementsByClassName('ripple')[0];
+            if (existingRipple) existingRipple.remove();
+
+            btn.appendChild(circle);
+        }
+
+        // 切换按钮外观形态 (箭头 ↔ 中断正方形)
+        function setBtnMode(isGenerating) {
+            const btn = document.getElementById('actionBtn');
+            if (isGenerating) {
+                btn.classList.add('stop-mode');
+                // 切换为正方形停止图标
+                btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect></svg>`;
+                btn.title = "中断本次推理";
+            } else {
+                btn.classList.remove('stop-mode');
+                // 恢复为圆环朝上箭头图标
+                btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>`;
+                btn.title = "发送指令";
+            }
+        }
+
+        async function sendMsg() {
+            const input = document.getElementById('userInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            // 1. 渲染用户消息（带伊布头像）
+            appendUserMsg(msg);
+            input.value = '';
+            input.disabled = true;
+
+            // 2. 渲染“VLM 思考中”动态加载行
+            const loadingRowId = appendLoadingMsg();
+
+            // 3. 实例化 AbortController 并更新按钮为正方形
+            abortController = new AbortController();
+            setBtnMode(true);
+
+            try {
+                // 4. 请求 FastAPI 后端（注入 signal 用于随时中断）
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: msg}),
+                    signal: abortController.signal
+                });
+                const data = await res.json();
+                
+                // 5. 替换加载状态为正式回答
+                removeLoadingMsg(loadingRowId);
+                appendBotMsg(data.reply, data.target);
+
+                if (data.target && data.target !== 'none') {
+                    document.getElementById('currentTarget').innerText = `LOCKED: ${data.target.toUpperCase()}`;
+                }
+            } catch (e) {
+                removeLoadingMsg(loadingRowId);
+                if (e.name === 'AbortError') {
+                    // 用户点击了正方形中断按钮
+                    appendBotMsg('🛑 [指令已中断]: 已停止大模型推理与目标下发', 'none');
+                } else {
+                    appendBotMsg('❌ [链路异常]: 无法连接至 FastAPI 控制中枢', 'none');
+                }
+            } finally {
+                // 6. 重置状态与按钮外观
+                abortController = null;
+                setBtnMode(false);
+                input.disabled = false;
+                input.focus();
+            }
+        }
+
+        function appendUserMsg(text) {
+            const box = document.getElementById('chatBox');
+            const row = document.createElement('div');
+            row.className = 'chat-row user-row';
+            row.innerHTML = `<div class="avatar"><img src="images/yibu.jpg" alt="User"></div><div class="msg-bubble">${escapeHtml(text)}</div>`;
+            box.appendChild(row);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function appendLoadingMsg() {
+            const box = document.getElementById('chatBox');
+            const row = document.createElement('div');
+            const id = 'loading-' + Date.now();
+            row.id = id;
+            row.className = 'chat-row bot-row';
+            row.innerHTML = `
+                <div class="avatar">🤖</div>
+                <div class="msg-bubble typing-indicator">
+                    <span style="font-size:12px; color:var(--neon-cyan); margin-right:5px;">VLM 思考中</span>
+                    <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+                </div>`;
+            box.appendChild(row);
+            box.scrollTop = box.scrollHeight;
+            return id;
+        }
+
+        function removeLoadingMsg(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+
+        function appendBotMsg(text, target) {
+            const box = document.getElementById('chatBox');
+            const row = document.createElement('div');
+            row.className = 'chat-row bot-row';
+            let targetTag = (target && target !== 'none') ? ` <br><span style="color:var(--neon-pink); font-size:12px;">[物理目标锁定 ➔ ${target}]</span>` : '';
+            row.innerHTML = `<div class="avatar">🤖</div><div class="msg-bubble">${text}${targetTag}</div>`;
+            box.appendChild(row);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/[&<>"']/g, function(m) {
+                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#039;'}[m];
+            });
+        }
+    </script>
+</body>
+</html>
